@@ -321,6 +321,14 @@ local migrationFunctions = {
     [51] = function()
         Questie.db.profile.questAnnounceChannel = "disabled"
     end,
+    [52] = function()
+        if Questie.db.profile.trackerCurrentZoneOnly == nil then
+            Questie.db.profile.trackerCurrentZoneOnly = false
+        end
+        if Questie.db.profile.trackerShowZoneFilterButton == nil then
+            Questie.db.profile.trackerShowZoneFilterButton = true
+        end
+    end,
 }
 
 function Migration:Migrate()

@@ -293,6 +293,21 @@ describe("QuestSection", function()
     end)
 
     describe("HasVisibleQuestItems", function()
+        it("omits zone-filtered quest rows and their item buttons without changing tracking", function()
+            TrackerUtils.GetQuestItemIds = function() return {5} end
+            local sortedQuestIds, questDetails = _Details({{quest = _Quest(1, 0), zoneName = "Westfall"}})
+            local hiddenQuests = {[1] = true}
+
+            assert.is_false(QuestSection.HasVisibleQuestItems(sortedQuestIds, questDetails, hiddenQuests))
+            QuestSection.Draw(sortedQuestIds, questDetails, hiddenQuests)
+            assert.same({}, drawnLines)
+            assert.same({}, Questie.db.char.AutoUntrackedQuests)
+
+            assert.is_true(QuestSection.HasVisibleQuestItems(sortedQuestIds, questDetails))
+            QuestSection.Draw(sortedQuestIds, questDetails)
+            assert.is_true(#drawnLines > 0)
+        end)
+
         before_each(function()
             TrackerUtils.GetQuestItemIds = function(quest) return quest.Id == 1 and {5} or {} end
         end)

@@ -5,4 +5,7 @@
     <Binding name="QUESTIE_TOGGLE_TRACKER" category="Questie">
         QuestieLoader:ImportModule("QuestieTracker").ToggleTracker()
     </Binding>
+    <Binding name="QUESTIE_TOGGLE_CURRENT_ZONE" category="Questie">
+        QuestieLoader:ImportModule("QuestieTracker").ToggleCurrentZoneFilter()
+    </Binding>
 </Bindings>

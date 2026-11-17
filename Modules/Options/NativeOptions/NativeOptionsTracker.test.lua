@@ -55,6 +55,18 @@ describe("native tracker options", function()
         _G.QuestMapFrame = originals.QuestMapFrame
     end)
 
+    it("can hide the zone filter button without toggling the filter", function()
+        Questie.db.profile.trackerCurrentZoneOnly = true
+        Questie.db.profile.trackerShowZoneFilterButton = true
+        local setting = LoadTab().group_tracker_window.items.group_header.items.showZoneFilterButton
+
+        setting.set(nil, false)
+
+        assert.is_false(setting.get())
+        assert.is_true(Questie.db.profile.trackerCurrentZoneOnly)
+        assert.spy(tracker.UpdateFormatting).was.called_with(tracker)
+    end)
+
     it("shows TomTom integration options only when the addon is loaded", function()
         assert.is_false(LoadTab().group_tracker_window.items.setTomTom.visible)
 

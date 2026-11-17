@@ -149,8 +149,9 @@ function ZoneDB:GetUiMapIdByAreaId(areaId)
 end
 
 ---@param uiMapId UiMapId
----@return AreaId
-function ZoneDB:GetAreaIdByUiMapId(uiMapId)
+---@param allowMissing boolean? Return nil if the map has no known area.
+---@return AreaId?
+function ZoneDB:GetAreaIdByUiMapId(uiMapId, allowMissing)
     local foundId = uiMapIdToAreaId[uiMapId]
     if foundId then
         return foundId
@@ -168,7 +169,9 @@ function ZoneDB:GetAreaIdByUiMapId(uiMapId)
             return areaId
         end
     end
-    error("No AreaId found for UiMapId: " .. uiMapId .. ":" .. C_Map.GetMapInfo(uiMapId).name)
+    if not allowMissing then
+        error("No AreaId found for UiMapId: " .. uiMapId .. ":" .. (mapInfo and mapInfo.name or "unknown"))
+    end
 end
 
 local areaNameToAreaId -- built on first use, C_Map.GetAreaInfo needs a fully loaded client

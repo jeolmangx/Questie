@@ -50,6 +50,22 @@ describe("QuestieTracker", function()
         QuestieTracker = QuestieLoader:ImportModule("QuestieTracker")
     end)
 
+    it("toggles the saved zone preference and requests a redraw through the combat queue", function()
+        local update = stub(QuestieTracker, "Update")
+        local queuedUpdate
+        QuestieCombatQueue.Queue = function(_, callback) queuedUpdate = callback end
+
+        QuestieTracker.ToggleCurrentZoneFilter()
+        assert.is_true(Questie.db.profile.trackerCurrentZoneOnly)
+        assert.spy(update).was.not_called()
+        queuedUpdate()
+        assert.spy(update).was.called_with(QuestieTracker)
+
+        QuestieTracker.ToggleCurrentZoneFilter()
+        assert.is_false(Questie.db.profile.trackerCurrentZoneOnly)
+        update:revert()
+    end)
+
     describe("QuestItemLooted", function()
         local getItemInfoMock, getItemCountMock, usableItemMock, afterMock, registerEventMock
         local originalTimer
@@ -400,6 +416,7 @@ describe("QuestieTracker", function()
 
     describe("explicit display refresh", function()
         local now, inCombat, expansion, originalExpansion, originalTimer, originalDurability, originalBindingLabel
+        local originalZoneBindingLabel
         local timeMock, combatMock, countMock, instanceMock, infoMock, screenMock
         local header, pool, revision, RecipeSection, ScenarioSection, AchievementSection, QuestSection, drawnSections
 
@@ -416,6 +433,7 @@ describe("QuestieTracker", function()
             expansion.Current = expansion.Era
             originalTimer, originalDurability = _G.C_Timer, _G.DurabilityFrame
             originalBindingLabel = _G.BINDING_NAME_QUESTIE_TOGGLE_TRACKER
+            originalZoneBindingLabel = _G.BINDING_NAME_QUESTIE_TOGGLE_CURRENT_ZONE
             _G.C_Timer = {After = function() end}
             _G.DurabilityFrame = {GetPoint = function() return "TOPLEFT" end}
             Questie.db.profile.trackerFontSizeZone = 12
@@ -434,7 +452,7 @@ describe("QuestieTracker", function()
             end
             base.Update = function() end
             header = QuestieLoader:ImportModule("TrackerHeaderFrame")
-            header.Initialize = function() return {} end
+            header.Initialize = spy.new(function() return {} end)
             header.Update = function() assert.spy(TrackerData.Refresh).was.called(1) end
             local frame = QuestieLoader:ImportModule("TrackerQuestFrame")
             frame.Initialize = function() return {} end
@@ -485,6 +503,32 @@ describe("QuestieTracker", function()
             expansion.Current = originalExpansion
             _G.C_Timer, _G.DurabilityFrame = originalTimer, originalDurability
             _G.BINDING_NAME_QUESTIE_TOGGLE_TRACKER = originalBindingLabel
+            _G.BINDING_NAME_QUESTIE_TOGGLE_CURRENT_ZONE = originalZoneBindingLabel
+        end)
+
+        it("provides the shared toggle to the tracker header and labels the keybinding", function()
+            assert.spy(header.Initialize).was.called_with(match.is_table(), QuestieTracker.Update, QuestieTracker.ToggleCurrentZoneFilter)
+            assert.are_equal("Toggle Current Zone Filter", _G.BINDING_NAME_QUESTIE_TOGGLE_CURRENT_ZONE)
+        end)
+
+        it("redraws when newly available zone data changes visibility without a quest-log revision", function()
+            local hiddenQuests
+            local filter = stub(QuestieLoader:ImportModule("TrackerZoneFilter"), "GetHiddenQuests", function() return hiddenQuests end)
+            Questie.db.profile.trackerCurrentZoneOnly = true
+            header.Update = function() end
+            TrackerUtils.GetSortedQuestIds = function() return {}, {} end
+            now = 1
+            QuestieTracker:Update()
+            now = 2
+            QuestieTracker:Update(true)
+            assert.spy(QuestSection.Draw).was.called(1)
+
+            hiddenQuests = {[20] = true}
+            now = 3
+            QuestieTracker:Update(true)
+            assert.spy(QuestSection.Draw).was.called(2)
+            assert.same(hiddenQuests, QuestSection.Draw.calls[2].vals[3])
+            filter:revert()
         end)
 
         it("should draw quests and recipes outside scenarios before WotLK", function()

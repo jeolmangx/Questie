@@ -97,6 +97,28 @@ describe("EventHandler event dispatch", function()
         assert.spy(GetQuestLogIndexByID).was.not_called()
     end)
 
+    it("queues a tracker refresh on zone events while the filter is enabled", function()
+        local tracker = QuestieLoader:ImportModule("QuestieTracker")
+        local queue = QuestieLoader:ImportModule("QuestieCombatQueue")
+        local originalZoneChanged, originalQueue = tracker.HandleZoneChanged, queue.Queue
+        local originalSetting = Questie.db.profile.trackerCurrentZoneOnly
+        tracker.HandleZoneChanged = spy.new(function() end)
+        queue.Queue = spy.new(function() end)
+
+        Questie.db.profile.trackerCurrentZoneOnly = false
+        callbacks.ZONE_CHANGED("ZONE_CHANGED")
+        assert.spy(queue.Queue).was.not_called()
+        Questie.db.profile.trackerCurrentZoneOnly = true
+        callbacks.ZONE_CHANGED("ZONE_CHANGED")
+        callbacks.ZONE_CHANGED_INDOORS("ZONE_CHANGED_INDOORS")
+        callbacks.ZONE_CHANGED_NEW_AREA("ZONE_CHANGED_NEW_AREA")
+        assert.spy(queue.Queue).was.called(3)
+        assert.spy(tracker.HandleZoneChanged).was.called(1)
+
+        tracker.HandleZoneChanged, queue.Queue = originalZoneChanged, originalQueue
+        Questie.db.profile.trackerCurrentZoneOnly = originalSetting
+    end)
+
     it("resolves Forever's single quest ID without treating it as a log index", function()
         Questie.IsForever = true
 

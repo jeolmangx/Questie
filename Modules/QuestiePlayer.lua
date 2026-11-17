@@ -95,20 +95,33 @@ function QuestiePlayer.HasRequiredClass(requiredClasses)
     return (not requiredClasses) or (requiredClasses == 0) or ((requiredClasses % playerClassFlagX2) >= playerClassFlag)
 end
 
+---@param requireZone boolean? Leave unknown and continent-only locations unresolved.
 ---@return AreaId?
-function QuestiePlayer:GetCurrentZoneId()
+function QuestiePlayer:GetCurrentZoneId(requireZone)
     local uiMapId = C_Map.GetBestMapForUnit("player")
     if uiMapId then
         local mapInfo = C_Map.GetMapInfo(uiMapId)
         if mapInfo and mapInfo.mapType <= Enum.UIMapType.Continent then
             -- Pre-Cata caves and dungeon entrance areas have no map of their own, so the client
             -- reports the continent (or world) map. The zone text still names the real zone, so use that.
-            return ZoneDB:GetAreaIdByName(GetRealZoneText()) or ZoneDB:GetAreaIdByUiMapId(uiMapId)
+            local zoneName = GetRealZoneText()
+            local zoneId = ZoneDB:GetAreaIdByName(zoneName)
+            if zoneId and (not requireZone or zoneName ~= mapInfo.name) then
+                return zoneId
+            end
+            if not requireZone then
+                return ZoneDB:GetAreaIdByUiMapId(uiMapId)
+            end
+        else
+            local zoneId = ZoneDB:GetAreaIdByUiMapId(uiMapId, requireZone)
+            if not requireZone or (zoneId and zoneId > 0) then
+                return zoneId
+            end
         end
-        return ZoneDB:GetAreaIdByUiMapId(uiMapId)
     end
 
-    return ZoneDB.instanceIdToAreaId[select(8, GetInstanceInfo())]
+    local instanceId = select(8, GetInstanceInfo())
+    return instanceId and ZoneDB.instanceIdToAreaId[instanceId]
 end
 
 ---@return number

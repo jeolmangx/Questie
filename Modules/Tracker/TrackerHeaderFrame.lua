@@ -35,7 +35,7 @@ local IsAddOnLoaded = QuestieCompat.IsAddOnLoaded
 
 local headerFrame, trackerBaseFrame
 
-function TrackerHeaderFrame.Initialize(baseFrame, OnTrackedQuestClick)
+function TrackerHeaderFrame.Initialize(baseFrame, OnTrackedQuestClick, toggleCurrentZoneFilter)
     trackerBaseFrame = baseFrame
     headerFrame = CreateFrame("Button", "Questie_HeaderFrame", trackerBaseFrame)
 
@@ -182,6 +182,25 @@ function TrackerHeaderFrame.Initialize(baseFrame, OnTrackedQuestClick)
 
     headerFrame.trackedQuests = trackedQuests
 
+    local zoneFilterButton = CreateFrame("Button", nil, headerFrame)
+    zoneFilterButton:SetPoint("LEFT", trackedQuests, "RIGHT", 6, 0)
+    zoneFilterButton:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2")
+    zoneFilterButton:RegisterForClicks("LeftButtonUp")
+    zoneFilterButton:SetScript("OnClick", toggleCurrentZoneFilter)
+    zoneFilterButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        GameTooltip:SetText(l10n("Toggle Current Zone Filter"))
+        GameTooltip:Show()
+        TrackerFadeTicker.Unfade()
+    end)
+    zoneFilterButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+        TrackerFadeTicker.Fade()
+    end)
+    zoneFilterButton.label = zoneFilterButton:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    zoneFilterButton.label:SetPoint("CENTER")
+    headerFrame.zoneFilterButton = zoneFilterButton
+
     if Questie.db.profile.trackerHeaderEnabled or (not TrackerUtils.HasQuest()) then
         headerFrame:SetSize(1, Questie.db.profile.trackerFontSizeHeader) -- Width is updated later on
     else
@@ -213,7 +232,9 @@ function TrackerHeaderFrame:Update()
         headerFrame.questieIcon:SetPoint("TOPLEFT", headerFrame, "TOPLEFT", 6, 0)
         headerFrame.questieIcon:Show()
 
-        headerFrame.trackedQuests.label:SetFont(LSM30:Fetch("font", Questie.db.profile.trackerFontHeader), trackerFontSizeHeader, Questie.db.profile.trackerFontOutline)
+        local font = LSM30:Fetch("font", Questie.db.profile.trackerFontHeader)
+        local outline = Questie.db.profile.trackerFontOutline
+        headerFrame.trackedQuests.label:SetFont(font, trackerFontSizeHeader, outline)
 
         local maxQuestAmount = "/" .. C_QuestLog.GetMaxNumQuestsCanAccept()
 
@@ -230,13 +251,31 @@ function TrackerHeaderFrame:Update()
         headerFrame.trackedQuests:SetPoint("TOPLEFT", headerFrame.questieIcon, "TOPRIGHT", 2, 0)
         headerFrame.trackedQuests:Show()
 
-        headerFrame:SetWidth(headerFrame.trackedQuests.label:GetUnboundedStringWidth() + trackerFontSizeHeader)
+        local headerWidth = headerFrame.trackedQuests:GetWidth() + trackerFontSizeHeader
+        local zoneFilterButton = headerFrame.zoneFilterButton
+        if Questie.db.profile.trackerShowZoneFilterButton then
+            zoneFilterButton.label:SetFont(font, trackerFontSizeHeader, outline)
+            local zoneOnly = Questie.db.profile.trackerCurrentZoneOnly
+            zoneFilterButton.label:SetText(zoneOnly and l10n("Zone: On") or l10n("Zone: Off"))
+            if zoneOnly then
+                zoneFilterButton.label:SetTextColor(0.4, 1, 0.4)
+            else
+                zoneFilterButton.label:SetTextColor(0.8, 0.8, 0.8)
+            end
+            zoneFilterButton:SetSize(zoneFilterButton.label:GetUnboundedStringWidth() + 6, trackerFontSizeHeader)
+            zoneFilterButton:Show()
+            headerWidth = headerWidth + zoneFilterButton:GetWidth() + 14
+        else
+            zoneFilterButton:Hide()
+        end
+
+        headerFrame:SetWidth(headerWidth)
         headerFrame:SetHeight(trackerFontSizeHeader + 5)
         headerFrame:Show()
 
         TrackerHeaderFrame.PositionTrackerHeaderFrame(headerFrame, trackerBaseFrame)
 
-        QuestieCompat.SetResizeBounds(trackerBaseFrame, headerFrame.trackedQuests.label:GetUnboundedStringWidth(), trackerFontSizeHeader)
+        QuestieCompat.SetResizeBounds(trackerBaseFrame, headerWidth, trackerFontSizeHeader)
     else
         headerFrame:Hide()
 

@@ -108,8 +108,11 @@ describe("QuestiePlayer", function()
     describe("GetCurrentZoneId", function()
         ---@type ZoneDB
         local ZoneDB
+        local originalGetInstanceInfo
 
         before_each(function()
+            originalGetInstanceInfo = _G.GetInstanceInfo
+            _G.GetInstanceInfo = function() return nil end
             ZoneDB = QuestieLoader:ImportModule("ZoneDB")
             ZoneDB.GetAreaIdByUiMapId = function(_, uiMapId)
                 return ({[1426] = 1, [1415] = 10074})[uiMapId]
@@ -120,16 +123,22 @@ describe("QuestiePlayer", function()
             _G.GetRealZoneText = function() return "Dun Morogh" end
         end)
 
+        after_each(function()
+            _G.GetInstanceInfo = originalGetInstanceInfo
+        end)
+
         it("should return the zone of the players map", function()
             _G.C_Map = {GetBestMapForUnit = function() return 1426 end, GetMapInfo = function() return {mapType = Enum.UIMapType.Zone} end}
 
             assert.is_equal(1, QuestiePlayer:GetCurrentZoneId())
+            assert.is_equal(1, QuestiePlayer:GetCurrentZoneId(true))
         end)
 
         it("should resolve a continent map to the zone named by the zone text", function()
             _G.C_Map = {GetBestMapForUnit = function() return 1415 end, GetMapInfo = function() return {mapType = Enum.UIMapType.Continent} end}
 
             assert.is_equal(1, QuestiePlayer:GetCurrentZoneId())
+            assert.is_equal(1, QuestiePlayer:GetCurrentZoneId(true))
         end)
 
         it("should keep the continent AreaId when the zone text is unknown", function()
@@ -137,6 +146,18 @@ describe("QuestiePlayer", function()
             _G.GetRealZoneText = function() return "Unknown" end
 
             assert.is_equal(10074, QuestiePlayer:GetCurrentZoneId())
+            assert.is_nil(QuestiePlayer:GetCurrentZoneId(true))
+        end)
+
+        it("should use the instance area when the client map has no area mapping", function()
+            local originalInstances = ZoneDB.instanceIdToAreaId
+            _G.C_Map = {GetBestMapForUnit = function() return 99999 end, GetMapInfo = function() return nil end}
+            _G.GetInstanceInfo = function() return nil, nil, nil, nil, nil, nil, nil, 33 end
+            ZoneDB.instanceIdToAreaId = {[33] = 209}
+
+            local areaId = QuestiePlayer:GetCurrentZoneId(true)
+            ZoneDB.instanceIdToAreaId = originalInstances
+            assert.are_equal(209, areaId)
         end)
     end)
 

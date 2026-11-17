@@ -85,6 +85,7 @@ function QuestieOptionsDefaults:Load()
 
             -- Tracker Settings Tab
             autoTrackQuests = true,
+            trackerCurrentZoneOnly = false,
             trackerShowCompleteQuests = true,
             trackerShowQuestLevel = true,
             collapseCompletedQuests = false,
@@ -94,6 +95,7 @@ function QuestieOptionsDefaults:Load()
             hideBlizzardCompletionText = false,
             hideCompletedAchieveObjectives = true,
             trackerHeaderEnabled = true,
+            trackerShowZoneFilterButton = true,
             moveHeaderToBottom = false,
             stickyDurabilityFrame = false,
             minimizeTrackerInCombat = false,
