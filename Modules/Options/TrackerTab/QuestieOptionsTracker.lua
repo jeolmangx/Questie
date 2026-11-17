@@ -863,6 +863,19 @@ function QuestieOptions.tabs.tracker:Initialize()
                                     QuestieTracker:UpdateFormatting()
                                 end
                             },
+                            showZoneFilterButton = {
+                                type = "toggle",
+                                order = 4,
+                                width = 1.5,
+                                name = function() return l10n("Show Zone Filter Button") end,
+                                desc = function() return l10n("Show the current-zone filter button in the tracker header.") end,
+                                disabled = function() return not Questie.db.profile.trackerEnabled end,
+                                get = function() return Questie.db.profile.trackerShowZoneFilterButton end,
+                                set = function(_, value)
+                                    Questie.db.profile.trackerShowZoneFilterButton = value
+                                    QuestieTracker:UpdateFormatting()
+                                end,
+                            },
                         },
                     },
                     group_background = {

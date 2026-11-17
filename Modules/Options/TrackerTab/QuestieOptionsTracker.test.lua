@@ -27,6 +27,7 @@ describe("tracker automatic tracking option", function()
         options.tabs = {}
         tracker = QuestieLoader:ImportModule("QuestieTracker")
         tracker.Update = spy.new(function() end)
+        tracker.UpdateFormatting = spy.new(function() end)
         compat = QuestieLoader:ImportModule("QuestieCompat")
         isAddOnLoadedMock = stub(compat, "IsAddOnLoaded", function() return false end)
         compat.QuestLog_Update = spy.new(function() end)
@@ -42,6 +43,19 @@ describe("tracker automatic tracking option", function()
         _G.ClassicQuestLog = originals.ClassicQuestLog
         _G.QuestLogFrame = originals.QuestLogFrame
         _G.QuestMapFrame = originals.QuestMapFrame
+    end)
+
+    it("can show the zone filter button again without toggling the filter", function()
+        Questie.db.profile.trackerCurrentZoneOnly = false
+        Questie.db.profile.trackerShowZoneFilterButton = false
+        local settings = options.tabs.tracker:Initialize()
+        local setting = settings.args.group_tracker.args.group_header.args.showZoneFilterButton
+
+        setting.set(nil, true)
+
+        assert.is_true(setting.get())
+        assert.is_false(Questie.db.profile.trackerCurrentZoneOnly)
+        assert.spy(tracker.UpdateFormatting).was.called_with(tracker)
     end)
 
     it("shows TomTom integration options only when the addon is loaded", function()

@@ -1,5 +1,11 @@
 # Questie
 
+This is Jeol’s personal fork of Questie. It adds a current-zone filter to the quest tracker. Click **Zone: Off** in the tracker header to turn it on, or assign **Toggle Current Zone Filter** under **Key Bindings → Questie**.
+
+To hide the button, turn off **Show Zone Filter Button** under **Tracker → Tracker Window Options → Tracker Header**. You can still toggle the filter with the keybind.
+
+With the filter on, the tracker shows quests with an unfinished objective or a ready turn-in in your current zone. When location data is missing, it falls back to the quest’s assigned zone and keeps quests with unresolved locations visible.
+
 [![Discord](https://img.shields.io/badge/discord-Questie-738bd7)](https://discord.gg/s33MAYKeZd)
 [![Stars](https://img.shields.io/github/stars/Questie/Questie)](https://img.shields.io/github/stars/Questie/Questie)
 

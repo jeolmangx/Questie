@@ -780,6 +780,19 @@ function QuestieOptionsEngine.tabs.tracker:Initialize()
                                     QuestieTracker:UpdateFormatting()
                                 end,
                             },
+                            showZoneFilterButton = {
+                                type = "checkbox",
+                                order = 4,
+                                width = "half",
+                                title = "Show Zone Filter Button",
+                                tooltip = "Show the current-zone filter button in the tracker header.",
+                                enabled = function() return Questie.db.profile.trackerEnabled end,
+                                get = function() return Questie.db.profile.trackerShowZoneFilterButton end,
+                                set = function(_, value)
+                                    Questie.db.profile.trackerShowZoneFilterButton = value
+                                    QuestieTracker:UpdateFormatting()
+                                end,
+                            },
                         },
                     },
                     group_background = {

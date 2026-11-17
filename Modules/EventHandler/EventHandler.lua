@@ -216,9 +216,17 @@ function EventHandler:RegisterLateEvents()
         QuestLogCache.OnLoadingScreenEnabled()
     end)
 
+    local function _UpdateZoneFilter()
+        if Questie.db.profile.trackerCurrentZoneOnly then
+            _EventHandler.UpdateTracker()
+        end
+    end
+    Questie:RegisterEvent("ZONE_CHANGED", _UpdateZoneFilter)
+    Questie:RegisterEvent("ZONE_CHANGED_INDOORS", _UpdateZoneFilter)
     Questie:RegisterEvent("ZONE_CHANGED_NEW_AREA", function()
         Questie.Debug(Questie.DEBUG_DEVELOP, "[EVENT] ZONE_CHANGED_NEW_AREA")
         QuestieTracker.HandleZoneChanged()
+        _UpdateZoneFilter()
     end)
 
     -- Pet Battle Events (MoP onwards)

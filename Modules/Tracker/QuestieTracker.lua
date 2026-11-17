@@ -32,6 +32,8 @@ local TrackerQuestTimers = QuestieLoader:ImportModule("TrackerQuestTimers")
 local TrackerUtils = QuestieLoader:ImportModule("TrackerUtils")
 ---@type TrackerData
 local TrackerData = QuestieLoader:ImportModule("TrackerData")
+---@type TrackerZoneFilter
+local TrackerZoneFilter = QuestieLoader:ImportModule("TrackerZoneFilter")
 ---@type AutoCompleteFrame
 local AutoCompleteFrame = QuestieLoader:ImportModule("AutoCompleteFrame")
 ---@type ChallengeModeTimer
@@ -246,7 +248,7 @@ function QuestieTracker.Initialize()
 
     -- Initialize tracker frames
     trackerBaseFrame = TrackerBaseFrame.Initialize()
-    trackerHeaderFrame = TrackerHeaderFrame.Initialize(trackerBaseFrame, QuestieTracker.Update)
+    trackerHeaderFrame = TrackerHeaderFrame.Initialize(trackerBaseFrame, QuestieTracker.Update, QuestieTracker.ToggleCurrentZoneFilter)
     trackerQuestFrame = TrackerQuestFrame.Initialize(trackerBaseFrame, trackerHeaderFrame)
     TrackerLayout.Initialize(trackerBaseFrame, function(width) QuestieTracker:UpdateWidth(width) end, function() QuestieTracker:UpdateHeight() end,
         function() return Questie.db.profile.trackerShowQuestFocusButtons end,
@@ -825,10 +827,41 @@ end
 
 function QuestieTracker.SetupKeybinding()
     _G.BINDING_NAME_QUESTIE_TOGGLE_TRACKER = l10n("Toggle Questie Tracker")
+    _G.BINDING_NAME_QUESTIE_TOGGLE_CURRENT_ZONE = l10n("Toggle Current Zone Filter")
+end
+
+function QuestieTracker.ToggleCurrentZoneFilter()
+    if not Questie.db or not Questie.db.profile.trackerEnabled then
+        return
+    end
+
+    Questie.db.profile.trackerCurrentZoneOnly = not Questie.db.profile.trackerCurrentZoneOnly
+    QuestieCombatQueue:Queue(function()
+        QuestieTracker:Update()
+    end)
 end
 
 -- TrackerData revision shown by the last completed layout. Nil makes the next quest-log check lay out.
 local layoutRevision
+local layoutHiddenQuests
+
+local function _HasSameHiddenQuests(previous, current)
+    if not previous or not current then
+        return previous == current
+    end
+
+    for questId in pairs(previous) do
+        if not current[questId] then
+            return false
+        end
+    end
+    for questId in pairs(current) do
+        if not previous[questId] then
+            return false
+        end
+    end
+    return true
+end
 
 ---@param onlyIfChanged boolean? Skip the layout when quest data is unchanged since the last one. Only for quest-log events.
 function QuestieTracker:Update(onlyIfChanged)
@@ -893,7 +926,7 @@ function QuestieTracker:Update(onlyIfChanged)
     end
 
     -- Refresh once before any layout/visibility reads. Sorting and formatting consume this same snapshot.
-    TrackerData.Refresh()
+    local quests = TrackerData.Refresh()
     -- Focus kept at startup while its quest was loading: retry against this fresh snapshot.
     if focusRestoreDeadline and _RestoreSavedFocus(GetTime() < focusRestoreDeadline) then
         focusRestoreDeadline = nil
@@ -908,10 +941,15 @@ function QuestieTracker:Update(onlyIfChanged)
         isScenario = instanceType == "scenario"
     end
     local showsQuests = not (isChallengeMode or isScenario)
+    local hiddenQuests
+    if showsQuests and Questie.db.profile.trackerCurrentZoneOnly then
+        hiddenQuests = TrackerZoneFilter.GetHiddenQuests(quests)
+    end
 
     -- QUEST_LOG_UPDATE fires on every quest log or map open. Laying out unchanged quests is the expensive part.
     local revision = TrackerData.GetLayoutRevision()
-    if onlyIfChanged and showsQuests and revision == layoutRevision then
+    -- Enrichment can arrive after the native quest log snapshot, without changing its layout revision.
+    if onlyIfChanged and showsQuests and revision == layoutRevision and _HasSameHiddenQuests(layoutHiddenQuests, hiddenQuests) then
         return
     end
     -- Not set by skipped checks, so they never throttle the next explicit update.
@@ -942,12 +980,12 @@ function QuestieTracker:Update(onlyIfChanged)
 
         -- Populate Achievements first then Quests
         local showAchievements = Expansions.Current >= Expansions.Wotlk
-        TrackerLayout.SetItemColumnShown(QuestSection.HasVisibleQuestItems(sortedQuestIds, questDetails))
+        TrackerLayout.SetItemColumnShown(QuestSection.HasVisibleQuestItems(sortedQuestIds, questDetails, hiddenQuests))
         if Questie.db.profile.listAchievementsFirst and showAchievements then
             AchievementSection.Draw()
-            QuestSection.Draw(sortedQuestIds, questDetails)
+            QuestSection.Draw(sortedQuestIds, questDetails, hiddenQuests)
         else
-            QuestSection.Draw(sortedQuestIds, questDetails)
+            QuestSection.Draw(sortedQuestIds, questDetails, hiddenQuests)
             if showAchievements then
                 AchievementSection.Draw()
             end
@@ -962,6 +1000,7 @@ function QuestieTracker:Update(onlyIfChanged)
     TrackerLinePool.RefreshHighlight()
     -- Only a completed layout is current. One that errors partway is retried by the next quest-log check.
     layoutRevision = showsQuests and revision or nil
+    layoutHiddenQuests = hiddenQuests
 
     -- First run clean up
     if isFirstRun then
@@ -1057,6 +1096,14 @@ function QuestieTracker:UpdateFormatting()
         end)
         QuestieTracker:UpdateHeight()
         TrackerQuestFrame:Update()
+    elseif Questie.db.profile.trackerCurrentZoneOnly and Questie.db.char.isTrackerExpanded and not TrackerLinePool.GetCurrentLine() then
+        -- A filtered tracker can have zero rows while the header and its toggle are still visible.
+        trackerQuestFrame.ScrollChildFrame:SetHeight(1)
+        trackerQuestFrame:SetHeight(1)
+        trackerBaseFrame:SetHeight(trackerHeaderFrame:IsShown() and trackerHeaderFrame:GetHeight() + 21 or 21)
+        if trackerHeaderFrame:IsShown() then
+            trackerBaseFrame:SetWidth(math.max(trackerBaseFrame:GetWidth(), trackerHeaderFrame:GetWidth()))
+        end
     end
 
     TrackerBaseFrame:Update()

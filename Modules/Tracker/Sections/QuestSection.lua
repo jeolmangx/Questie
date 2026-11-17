@@ -17,10 +17,12 @@ local l10n = QuestieLoader:ImportModule("l10n")
 ---@param questId QuestId
 ---@param quest TrackerQuest
 ---@param complete number
+---@param hiddenQuests table<QuestId, boolean>?
 ---@return boolean
-local function _IsQuestShown(questId, quest, complete)
+local function _IsQuestShown(questId, quest, complete, hiddenQuests)
     local timedQuest = quest.trackTimedQuest
-    return ((complete ~= 1 and (not quest.isComplete)) or Questie.db.profile.trackerShowCompleteQuests or timedQuest)
+    return (not hiddenQuests or not hiddenQuests[questId])
+        and ((complete ~= 1 and (not quest.isComplete)) or Questie.db.profile.trackerShowCompleteQuests or timedQuest)
         and ((Questie.db.profile.autoTrackQuests and (not Questie.db.char.AutoUntrackedQuests[questId]))
         or (not Questie.db.profile.autoTrackQuests and Questie.db.char.TrackedQuests[questId])) and true or false
 end
@@ -28,12 +30,13 @@ end
 ---Collapsed quests and quests in collapsed zones hide their quest item buttons.
 ---@param sortedQuestIds QuestId[]
 ---@param questDetails table<QuestId, {quest: TrackerQuest, zoneName: string}>
+---@param hiddenQuests table<QuestId, boolean>?
 ---@return boolean
-function QuestSection.HasVisibleQuestItems(sortedQuestIds, questDetails)
+function QuestSection.HasVisibleQuestItems(sortedQuestIds, questDetails, hiddenQuests)
     for _, questId in ipairs(sortedQuestIds) do
         local quest = questDetails[questId].quest
         local complete = quest:IsComplete()
-        if _IsQuestShown(questId, quest, complete)
+        if _IsQuestShown(questId, quest, complete, hiddenQuests)
             and (not Questie.db.char.collapsedZones[questDetails[questId].zoneName])
             and (not Questie.db.char.collapsedQuests[questId]) then
             local isMinimizable = (complete == 1 or complete == -1) or (#quest.Objectives == 0 and quest.isComplete == true)
@@ -49,7 +52,8 @@ end
 
 ---@param sortedQuestIds QuestId[]
 ---@param questDetails table<QuestId, {quest: TrackerQuest, zoneName: string}>
-function QuestSection.Draw(sortedQuestIds, questDetails)
+---@param hiddenQuests table<QuestId, boolean>?
+function QuestSection.Draw(sortedQuestIds, questDetails, hiddenQuests)
     local margins = TrackerLayout.GetMargins()
     local objectiveMarginLeft
     local objectiveColor = Questie.db.profile.trackerColorObjectives
@@ -77,7 +81,7 @@ function QuestSection.Draw(sortedQuestIds, questDetails)
         TrackerQuestTimers:UpdateAndGetRemainingTime(quest, nil, true)
         local timedQuest = quest.trackTimedQuest
 
-        if _IsQuestShown(questId, quest, complete) then
+        if _IsQuestShown(questId, quest, complete, hiddenQuests) then
             -- Add Quest Zones
             if zoneCheck ~= zoneName then
                 firstQuestInZone = true

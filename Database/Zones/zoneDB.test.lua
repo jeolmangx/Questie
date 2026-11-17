@@ -220,6 +220,14 @@ describe("ZoneDB", function()
     end)
 
     describe("GetAreaIdByUiMapId", function()
+        it("can leave an unrecognized client map unresolved", function()
+            _G.C_Map = {
+                GetMapInfo = function() return nil end,
+                GetAreaInfo = function() return "Different name" end,
+            }
+            assert.is_nil(ZoneDB:GetAreaIdByUiMapId(99999, true))
+        end)
+
         it("should correctly handle map ID for Kalimdor and EK", function()
             local areaId = ZoneDB:GetAreaIdByUiMapId(1414)
             assert.is_equal(10073, areaId)
