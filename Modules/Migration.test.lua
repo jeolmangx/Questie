@@ -275,18 +275,25 @@ describe("Migration", function()
         assert.is_true(Questie.db.profile.trackerCurrentZoneOnly)
         assert.is_false(Questie.db.profile.trackerShowZoneFilterButton)
     end)
+
     it("can upgrade the first fork release without losing filter preferences", function()
-        Questie.db.profile.migrationVersion = 52
-        Questie.db.profile.trackerCurrentZoneOnly = true
-        Questie.db.profile.trackerShowZoneFilterButton = false
+        local profile = Questie.db.profile
+        profile.migrationVersion = 51
+        Migration:Migrate()
+        local upstreamVersion = profile.migrationVersion
+
+        profile.migrationVersion = 52
+        profile.questieJeolMigrationVersion = nil
+        profile.trackerCurrentZoneOnly = true
+        profile.trackerShowZoneFilterButton = false
 
         Migration:Migrate()
         Migration:Migrate()
 
-        assert.are_same(51, Questie.db.profile.migrationVersion)
-        assert.are_same(1, Questie.db.profile.questieJeolMigrationVersion)
-        assert.is_true(Questie.db.profile.trackerCurrentZoneOnly)
-        assert.is_false(Questie.db.profile.trackerShowZoneFilterButton)
+        assert.are_same(upstreamVersion, profile.migrationVersion)
+        assert.are_same(1, profile.questieJeolMigrationVersion)
+        assert.is_true(profile.trackerCurrentZoneOnly)
+        assert.is_false(profile.trackerShowZoneFilterButton)
     end)
 
 end)

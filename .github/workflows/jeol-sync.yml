@@ -1,0 +1,176 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '23 13 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: jeol-upstream-sync
+
+jobs:
+  candidate:
+    if: github.repository == 'jeolmangx/Questie' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.merge.outputs.ready }}
+      commit: ${{ steps.merge.outputs.commit }}
+      base: ${{ steps.merge.outputs.base }}
+      previous_sync: ${{ steps.merge.outputs.previous_sync }}
+      title: ${{ steps.merge.outputs.title }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge the upstream release
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          upstream_repo=Questie/Questie
+          base=$(git rev-parse HEAD)
+          previous_sync=$(git rev-parse refs/remotes/origin/sync)
+          release_tag=$(gh release view --repo "$upstream_repo" --json tagName --jq .tagName)
+          [[ "$release_tag" =~ ^bundle/v[0-9]+\.[0-9]+\.[0-9]+\+v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git fetch --no-tags "https://github.com/$upstream_repo.git" "refs/tags/$release_tag"
+          upstream_commit=$(git rev-parse 'FETCH_HEAD^{commit}')
+          if git merge-base --is-ancestor "$upstream_commit" "$base"; then
+            echo "Already synced $release_tag." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$previous_sync" "$base"; then
+            if ! git merge-base --is-ancestor "$base" "$previous_sync" ||
+               ! git merge-base --is-ancestor "$upstream_commit" "$previous_sync"; then
+              echo "Existing sync work needs review before preparing $release_tag." | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            git switch --detach "$previous_sync"
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            if ! git merge --no-ff --no-commit "$upstream_commit"; then
+              conflicts=$(git diff --name-only --diff-filter=U)
+              if [[ "$conflicts" != Modules/Migration.lua ]]; then
+                printf 'Merge stopped. Unmerged files:\n%s\n' "$conflicts" | tee -a "$GITHUB_STEP_SUMMARY"
+                exit 1
+              fi
+              python3 cli/sync-fork-migration.py MERGE_HEAD
+              git add Modules/Migration.lua
+            fi
+            git commit -m "Sync upstream Questie ${release_tag#bundle/}"
+          fi
+          gh release download "$release_tag" --repo "$upstream_repo" --pattern release.json --output "$RUNNER_TEMP/upstream-release.json"
+          jq -e --arg sha "$upstream_commit" '.questie.producerCommit == $sha' "$RUNNER_TEMP/upstream-release.json"
+          provider=$(jq -er '.questiedb.producerCommit | select(test("^[0-9a-f]{40}$"))' "$RUNNER_TEMP/upstream-release.json")
+          printf 'provider=%s\n' "$provider" >> "$GITHUB_OUTPUT"
+          {
+            echo "ready=true"
+            echo "base=$base"
+            echo "previous_sync=$previous_sync"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "title=Sync upstream Questie ${release_tag#bundle/}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out the matching QuestieDB
+        if: steps.merge.outputs.ready == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: Questie/QuestieDB
+          ref: ${{ steps.merge.outputs.provider }}
+          path: .questiedb-test
+          persist-credentials: false
+
+      - name: Install Lua
+        if: steps.merge.outputs.ready == 'true'
+        uses: leafo/gh-actions-lua@v13.1.0
+        with:
+          luaVersion: '5.1'
+      - name: Install LuaRocks
+        if: steps.merge.outputs.ready == 'true'
+        uses: leafo/gh-actions-luarocks@v6.1.1
+        with:
+          luaRocksVersion: '3.13.0'
+
+      - name: Test the candidate
+        if: steps.merge.outputs.ready == 'true'
+        env:
+          QUESTIE_DB_PATH: ${{ github.workspace }}/.questiedb-test
+          TZ: Europe/Berlin
+        run: |
+          set -euo pipefail
+          luarocks install bit32 5.3.5.1-1
+          luarocks install busted 2.2.0-1
+          luarocks install luafilesystem 1.8.0-1
+          luarocks install luacheck
+          # Search paths explicitly exclude the separate provider checkout.
+          busted -p '.test.lua' Database Libs Localization Modules Public cli test Questie.test.lua
+          luacheck -q -- Database Localization Modules Public Questie.lua
+          lua cli/validate-loader-usage.lua
+
+      - name: Package tested checkout
+        if: steps.merge.outputs.ready == 'true'
+        env:
+          BASE: ${{ steps.merge.outputs.base }}
+        run: |
+          set -euo pipefail
+          python3 cli/package-forever.py "$RUNNER_TEMP/forever"
+          git branch --no-track candidate HEAD
+          git bundle create "$RUNNER_TEMP/sync.bundle" candidate "^$BASE"
+
+      - if: steps.merge.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: questie-forever
+          path: ${{ runner.temp }}/forever/
+          if-no-files-found: error
+      - if: steps.merge.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: questie-sync-commit
+          path: ${{ runner.temp }}/sync.bundle
+          if-no-files-found: error
+
+  propose:
+    needs: candidate
+    if: needs.candidate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.candidate.outputs.base }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: questie-sync-commit
+          path: ${{ runner.temp }}/sync
+      - name: Push the tested merge and open a PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ needs.candidate.outputs.base }}
+          CANDIDATE: ${{ needs.candidate.outputs.commit }}
+          PREVIOUS_SYNC: ${{ needs.candidate.outputs.previous_sync }}
+          TITLE: ${{ needs.candidate.outputs.title }}
+        run: |
+          set -euo pipefail
+          git fetch "$RUNNER_TEMP/sync/sync.bundle" refs/heads/candidate
+          test "$(git rev-parse FETCH_HEAD)" = "$CANDIDATE"
+          test "$(git ls-remote origin refs/heads/master | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin refs/heads/sync | cut -f1)" = "$PREVIOUS_SYNC"
+          git merge-base --is-ancestor "$PREVIOUS_SYNC" "$CANDIDATE"
+          git push origin "$CANDIDATE:refs/heads/sync"
+          pr=$(gh pr list --head sync --base master --state open --json url --jq '.[0].url // empty')
+          if [[ -z "$pr" ]]; then
+            run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            pr=$(gh pr create --head sync --base master --title "$TITLE" --body "Tested Forever ZIP: $run_url")
+          fi
+          echo "Sync PR: $pr" >> "$GITHUB_STEP_SUMMARY"

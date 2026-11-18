@@ -1,0 +1,85 @@
+name: Publish Forever
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_run:
+        description: Successful Sync Upstream run ID
+        type: string
+        required: true
+      dry_run:
+        description: Verify the candidate without publishing
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: jeol-publish-forever
+
+jobs:
+  publish:
+    if: github.repository == 'jeolmangx/Questie' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the sync run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_RUN: ${{ inputs.sync_run }}
+        run: |
+          set -euo pipefail
+          [[ "$SYNC_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SYNC_RUN" |
+            jq -e '.conclusion == "success" and .path == ".github/workflows/jeol-sync.yml" and .head_branch == "master"'
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: questie-forever
+          run-id: ${{ inputs.sync_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/forever
+
+      - name: Validate and publish the tested ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/forever"
+          tree=$(jq -er '.tree' candidate.json)
+          digest=$(jq -er '.sha256 | select(test("^[0-9a-f]{64}$"))' candidate.json)
+          version=$(jq -er '.version | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' candidate.json)
+          actual_tree=$(git -C "$GITHUB_WORKSPACE" rev-parse 'HEAD^{tree}')
+          if [[ "$tree" != "$actual_tree" ]]; then
+            echo "The tested candidate does not match master. Merge its PR before publishing." >&2
+            exit 1
+          fi
+          printf '%s  Questie-forever.zip\n' "$digest" | sha256sum --check --strict
+          commit=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)
+          tags=$(git -C "$GITHUB_WORKSPACE" tag --list "v$version-jeol.*")
+          last=$(printf '%s\n' "$tags" | sed -nE 's/^.*-jeol\.([1-9][0-9]*)$/\1/p' | sort -n | tail -1)
+          tag="v$version-jeol.$((${last:-0} + 1))"
+          echo "Verified $tag at $commit with SHA-256 $digest." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$DRY_RUN" == "true" ]]; then
+            exit 0
+          fi
+          test "$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" refs/heads/master | cut -f1)" = "$commit"
+          for previous in $tags; do
+            if [[ "$(git -C "$GITHUB_WORKSPACE" rev-parse "$previous^{tree}")" == "$tree" ]]; then
+              echo "These files already have tag $previous." >&2
+              exit 1
+            fi
+          done
+          asset="Questie-$tag-forever.zip"
+          mv Questie-forever.zip "$asset"
+          gh release create "$tag" "$asset" --repo "$GITHUB_REPOSITORY" --target "$commit" \
+            --latest --title "Questie Zone Filter for WoW Forever" \
+            --notes "Syncs the current-zone filter with Questie $version."
