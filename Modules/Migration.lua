@@ -321,6 +321,7 @@ local migrationFunctions = {
     [51] = function()
         Questie.db.profile.questAnnounceChannel = "disabled"
     end,
+    -- BEGIN FORK MIGRATIONS
     [52] = function()
         if Questie.db.profile.trackerCurrentZoneOnly == nil then
             Questie.db.profile.trackerCurrentZoneOnly = false
@@ -329,27 +330,33 @@ local migrationFunctions = {
             Questie.db.profile.trackerShowZoneFilterButton = true
         end
     end,
+    -- END FORK MIGRATIONS
 }
 
 function Migration:Migrate()
-    if not Questie.db.profile.migrationVersion then
-        Questie.db.profile.migrationVersion = 0
+    local profile = Questie.db.profile
+    local currentVersion = profile.migrationVersion or 0
+    local forkSlot = table.getn(migrationFunctions)
+    local upstreamTarget = forkSlot - 1
+
+    -- The first fork release used slot 52 and recorded it as though it were upstream.
+    if profile.questieJeolMigrationVersion == nil then
+        if currentVersion == 52 then
+            currentVersion = 51
+            profile.migrationVersion = currentVersion
+        end
+        profile.questieJeolMigrationVersion = 0
     end
 
-    local currentVersion = Questie.db.profile.migrationVersion
-    local targetVersion = table.getn(migrationFunctions)
-
-    if currentVersion == targetVersion then
-        Questie.Debug(Questie.DEBUG_DEVELOP, "[Migration] Nothing to migrate. Already on latest version:", targetVersion)
-        return
-    end
-
-    Questie.Debug(Questie.DEBUG_DEVELOP, "[Migration] Starting Questie migration for targetVersion", targetVersion)
-
-    while currentVersion < targetVersion do
+    while currentVersion < upstreamTarget do
         currentVersion = currentVersion + 1
         migrationFunctions[currentVersion]()
+        profile.migrationVersion = currentVersion
     end
+    profile.migrationVersion = currentVersion
 
-    Questie.db.profile.migrationVersion = currentVersion
+    if profile.questieJeolMigrationVersion < 1 then
+        migrationFunctions[forkSlot]()
+        profile.questieJeolMigrationVersion = 1
+    end
 end
