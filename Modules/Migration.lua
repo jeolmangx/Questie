@@ -321,8 +321,11 @@ local migrationFunctions = {
     [51] = function()
         Questie.db.profile.questAnnounceChannel = "disabled"
     end,
-    -- BEGIN FORK MIGRATIONS
     [52] = function()
+        Questie.db.profile.enableTooltipsNextInChainOnActiveQuests = false
+    end,
+    -- BEGIN FORK MIGRATIONS
+    [53] = function()
         if Questie.db.profile.trackerCurrentZoneOnly == nil then
             Questie.db.profile.trackerCurrentZoneOnly = false
         end
